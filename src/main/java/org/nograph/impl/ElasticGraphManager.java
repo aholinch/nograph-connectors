@@ -49,19 +49,50 @@ public class ElasticGraphManager extends BaseGraphManager
 	private static final Logger logger = Logger.getLogger(ElasticGraphManager.class.getName());
 	
 	protected ElasticClient client = null;
-	protected String nodeIndex = null;
-	protected String relIndex = null;
 	protected int defaultMaxHits = 10000;
+	protected boolean hasMultipleNodeIndexes = false;
+	protected boolean hasMultipleRelIndexes = false;
 	
 	protected QueryTranslator queryTranslator = null;
 	
     public ElasticGraphManager()
     {
     	client = new ElasticClient();
-    	nodeIndex = "graphnodes";
-    	relIndex = "graphrels";
     	
     	queryTranslator = new BasicStringQueryTranslator(":");
+    }
+    
+    protected String getNodeIndexForQuery(String type)
+    {
+    	if(hasMultipleNodeIndexes)
+    	{
+    		return "graphnodes*";
+    	}
+    	return "graphnodes";
+    	// TODO implement type-based lookups
+    }
+    
+    protected String getNodeIndexForModify(String type)
+    {
+    	return "graphnodes"; 
+    	// TODO implement type-based lookups
+    }
+    
+    protected String getRelIndexForQuery(String type)
+    {
+    	if(hasMultipleRelIndexes)
+    	{
+    		return "graphrels*";
+    	}
+    	return "graphrels";
+    	
+    	// TODO implement type-based lookups
+    }
+    
+    protected String getRelIndexForModify(String type)
+    {
+    	return "graphrels"; 
+    	// TODO implement type-based lookups
     }
     
 	@Override
@@ -73,7 +104,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		{
 			String id = n.getID();
 			
-			id = client.saveDoc(nodeIndex, n.toJSONString(), id);
+			id = client.saveDoc(getNodeIndexForModify(n.getType()), n.toJSONString(), id);
 			
 			if(n.getID() == null)n.setID(id);
 		}
@@ -92,7 +123,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		Node n = null;
 		try
 		{
-			String json = client.getDoc(nodeIndex, id);
+			String json = client.getDoc(getNodeIndexForQuery(null), id);
 
 			if(json != null)
 			{
@@ -127,7 +158,7 @@ public class ElasticGraphManager extends BaseGraphManager
 				jsons.add(nodes.get(i).toJSONString());
 			}
 			
-			List<String> ids = client.multiCreateDoc(nodeIndex, jsons);
+			List<String> ids = client.multiCreateDoc(getNodeIndexForModify(null), jsons);
 			
 			for(int i=0; i<size; i++)
 			{
@@ -173,7 +204,7 @@ public class ElasticGraphManager extends BaseGraphManager
 				jsons.add(n.toJSONString());
 			}
 			
-			client.multiSaveDoc(nodeIndex, jsons, ids);
+			client.multiSaveDoc(getNodeIndexForModify(null), jsons, ids);
 		}
 		catch(Exception ex)
 		{
@@ -193,6 +224,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		
 		try
 		{
+			String nodeIndex = getNodeIndexForQuery(null);
 			for(int i=0; i<size; i++)
 			{
 				id = ids.get(i);
@@ -219,7 +251,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		{
 			String id = r.getID();
 			
-			id = client.saveDoc(relIndex, relToJSON(r), id);
+			id = client.saveDoc(getRelIndexForModify(r.getType()), relToJSON(r), id);
 			
 			if(r.getID() == null)r.setID(id);
 		}
@@ -237,7 +269,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		Relationship r = null;
 		try
 		{
-			String json = client.getDoc(relIndex, id);
+			String json = client.getDoc(getRelIndexForQuery(null), id);
 
 			if(json != null)
 			{
@@ -281,7 +313,7 @@ public class ElasticGraphManager extends BaseGraphManager
 				jsons.add(relToJSON(rels.get(i)));
 			}
 			
-			List<String> ids = client.multiCreateDoc(relIndex, jsons);
+			List<String> ids = client.multiCreateDoc(getRelIndexForModify(null), jsons);
 			
 			for(int i=0; i<size; i++)
 			{
@@ -326,7 +358,7 @@ public class ElasticGraphManager extends BaseGraphManager
 				jsons.add(relToJSON(r));
 			}
 			
-			client.multiSaveDoc(relIndex, jsons, ids);
+			client.multiSaveDoc(getRelIndexForModify(null), jsons, ids);
 		}
 		catch(Exception ex)
 		{
@@ -346,6 +378,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		
 		try
 		{
+			String relIndex = getRelIndexForQuery(null);
 			for(int i=0; i<size; i++)
 			{
 				id = ids.get(i);
@@ -407,7 +440,7 @@ public class ElasticGraphManager extends BaseGraphManager
 				if(query.length()>0)query+= " AND ";
 				query+=key+":("+val.toString()+")";
 			}
-			SearchResults res = client.runQueryStringQuery(nodeIndex, query, maxResults);
+			SearchResults res = client.runQueryStringQuery(getNodeIndexForQuery(null), query, maxResults);
 			
 			nodes = resToNodes(res);	
 		}
@@ -447,7 +480,8 @@ public class ElasticGraphManager extends BaseGraphManager
 				if(query.length()>0)query+= " AND ";
 				query+=key+":("+val.toString()+")";
 			}
-			SearchResults res = client.runQueryStringQuery(relIndex, query, maxResults);
+			
+			SearchResults res = client.runQueryStringQuery(getRelIndexForQuery(null), query, maxResults);
 			
 			rels = resToRels(res,fetchNodes);	
 		}
@@ -470,7 +504,7 @@ public class ElasticGraphManager extends BaseGraphManager
 			
 			logger.info(queryStr);
 		
-			SearchResults res = client.runQueryStringQuery(nodeIndex, queryStr, query.getMaxResults());
+			SearchResults res = client.runQueryStringQuery(getNodeIndexForQuery(null), queryStr, query.getMaxResults());
 			
 			nodes = resToNodes(res);
 		}
@@ -493,7 +527,7 @@ public class ElasticGraphManager extends BaseGraphManager
 			
 			logger.info(queryStr);
 		
-			SearchResults res = client.runQueryStringQuery(relIndex, queryStr, query.getMaxResults());
+			SearchResults res = client.runQueryStringQuery(getRelIndexForQuery(null), queryStr, query.getMaxResults());
 			
 			rels = resToRels(res, query.getFetchNodesForRelationships());
 		}
@@ -514,7 +548,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		{
 			String query = "(node1.id="+id+") OR (node2.id="+id+")";
 			
-			SearchResults res = client.runQueryStringQuery(relIndex, query, defaultMaxHits);
+			SearchResults res = client.runQueryStringQuery(getRelIndexForQuery(null), query, defaultMaxHits);
 			
 			rels = resToRels(res,true);
 		}
@@ -567,7 +601,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		
 		try
 		{
-			SearchResults res = client.runMatchQuery(nodeIndex, "type", type, 0);
+			SearchResults res = client.runMatchQuery(getNodeIndexForQuery(type), "type", type, 0);
 			if(res != null) out = res.getTotal();
 		}
 		catch(Exception ex)
@@ -583,7 +617,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		
 		try
 		{
-			SearchResults res = client.runMatchQuery(relIndex, "type", type, 0);
+			SearchResults res = client.runMatchQuery(getRelIndexForQuery(type), "type", type, 0);
 			if(res != null) out = res.getTotal();
 		}
 		catch(Exception ex)
@@ -627,7 +661,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		
 		try
 		{
-			m = client.getSimpleAggregate(nodeIndex, "type");
+			m = client.getSimpleAggregate(getNodeIndexForQuery(null), "type");
 		}
 		catch(Exception ex)
 		{
@@ -643,7 +677,7 @@ public class ElasticGraphManager extends BaseGraphManager
 		
 		try
 		{
-			m = client.getSimpleAggregate(relIndex, "type");
+			m = client.getSimpleAggregate(getRelIndexForQuery(null), "type");
 		}
 		catch(Exception ex)
 		{
